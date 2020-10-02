@@ -2,7 +2,7 @@
 
 Contains the following:
 - [ ] Fundamentals
-  - [ ] Arrays and Slices
+  - [X] Arrays and Slices
   - [ ] Maps and Structs
   - [ ] Defer, Panic and Recover
   - [ ] Pointers
@@ -12,9 +12,9 @@ Contains the following:
   - [ ] Channels
   
 - [ ] Applications
-  - [ ] Static web server (using no packages)
-  - [ ] Rest API(using gorilla mux)
-  - [ ] Web Crawler
+  - [X] Static web server (using no packages)
+  - [X] Rest API(using gorilla mux)
+  - [X] Web Crawler
   - [ ] ORM
   - [ ] Cron Job
  
