@@ -168,3 +168,4 @@ modules.xml
 # Sonarlint plugin
 
 # End of https://www.toptal.com/developers/gitignore/api/go,intellij+all,pycharm+all
+.vscode/settings.json
