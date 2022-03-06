@@ -169,3 +169,5 @@ modules.xml
 
 # End of https://www.toptal.com/developers/gitignore/api/go,intellij+all,pycharm+all
 .vscode/settings.json
+design-patterns/.vscode/settings.json
+.gitignore
