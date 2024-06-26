@@ -250,24 +250,26 @@ Don't communicate by sharing memory, share memory by communicating.
 Channels are first-class values, just like strings or integers.
 
 ```go
-    c := boring("boring!") // Function returning a channel.
-    for i := 0; i < 5; i++ {
-        fmt.Printf("You say: %q\n", <-c)
-    }
-    fmt.Println("You're boring; I'm leaving.")
-```
+func boring(msg string) <-chan string { // returns receive-only channel of strings
+	c := make(chan string)
+	go func() {
+		for i := 0; ; i++ {
+			c <- fmt.Sprintf("%s %d", msg, i)
+			time.Sleep(time.Duration(rand.Intn(1e3)) * time.Millisecond)
+		}
+	}()
 
-```go
-func boring(msg string) <-chan string { // Returns receive-only channel of strings.
-    c := make(chan string)
-    go func() { // We launch the goroutine from inside the function.
-        for i := 0; ; i++ {
-            c <- fmt.Sprintf("%s %d", msg, i)
-            time.Sleep(time.Duration(rand.Intn(1e3)) * time.Millisecond)
-        }
-    }()
-    return c // Return the channel to the caller.
+	return c
 }
+
+func main() {
+	c := boring("boring goroutine")
+	for msg := range c {
+		fmt.Println(msg)
+	}
+	fmt.Println("I'm done")
+}
+
 ```
 
 ### Channels as a handle on a service
@@ -294,19 +296,49 @@ These programs make Joe and Ann count in lockstep.
 We can instead use a fan-in function to let whosoever is ready talk.
 
 ```go
-func fanIn(input1, input2 <-chan string) <-chan string {
-    c := make(chan string)
-    go func() { for { c <- <-input1 } }()
-    go func() { for { c <- <-input2 } }()
-    return c
+package main
+
+import (
+	"fmt"
+	"math/rand"
+	"time"
+)
+
+func boring(msg string) <-chan string { // returns receive-only channel of strings
+	c := make(chan string)
+	go func() {
+		for i := 0; ; i++ {
+			c <- fmt.Sprintf("%s %d", msg, i)
+			time.Sleep(time.Duration(rand.Intn(1e3)) * time.Millisecond)
+		}
+	}()
+
+	return c
 }
+
+func fanin(input1, input2 <-chan string) <-chan string {
+	c := make(chan string)
+	go func() {
+		for {
+			c <- <-input1
+		}
+	}()
+	go func() {
+		for {
+			c <- <-input2
+		}
+	}()
+	return c
+}
+
 func main() {
-    c := fanIn(boring("Joe"), boring("Ann"))
-    for i := 0; i < 10; i++ {
-        fmt.Println(<-c)
-    }
-    fmt.Println("You're both boring; I'm leaving.")
+	c := fanin(boring("joe"), boring("ann"))
+	for i := 0; i < 10; i++ {
+		fmt.Println(<-c)
+	}
+	fmt.Println("i am done")
 }
+
 ```
 
 ### Fan-In
@@ -329,16 +361,59 @@ type Message struct {
 Each speaker must wait for a go-ahead.
 
 ```go
-    for i := 0; i < 5; i++ {
-        msg1 := <-c; fmt.Println(msg1.str)
-        msg2 := <-c; fmt.Println(msg2.str)
-        msg1.wait <- true
-        msg2.wait <- true
-    }
-    waitForIt := make(chan bool) // Shared between all messages.
-            c <- Message{ fmt.Sprintf("%s: %d", msg, i), waitForIt }
-            time.Sleep(time.Duration(rand.Intn(2e3)) * time.Millisecond)
-            <-waitForIt
+package main
+
+import (
+	"fmt"
+	"math/rand"
+	"time"
+)
+
+func boring(msg string) <-chan Message { // returns receive-only channel of strings
+	c := make(chan Message)
+	go func() {
+		for i := 0; ; i++ {
+			waitForIt := make(chan bool)
+			c <- Message{str: fmt.Sprintf("%s %d", msg, i), wait: waitForIt}
+			time.Sleep(time.Duration(rand.Intn(1e3)) * time.Millisecond)
+			<-waitForIt
+		}
+	}()
+
+	return c
+}
+
+type Message struct {
+	str  string
+	wait chan bool
+}
+
+func fanin(input1, input2 <-chan Message) <-chan Message {
+	c := make(chan Message)
+	go func() {
+		for {
+			select {
+			case msg := <-input1:
+				c <- msg
+
+			case msg := <-input2:
+				c <- msg
+			}
+		}
+	}()
+	return c
+}
+
+func main() {
+	c := fanin(boring("joe"), boring("ann"))
+	for i := 0; i < 10; i++ {
+		msg := <-c
+		fmt.Println(msg.str)
+		msg.wait <- true // signal that the message has been processed
+	}
+	fmt.Println("I am done")
+}
+
 ```
 
 ### Select
@@ -445,19 +520,39 @@ func main() {
 We can turn this around and tell Joe to stop when we're tired of listening to him.
 
 ```go
-    quit := make(chan bool)
-    c := boring("Joe", quit)
-    for i := rand.Intn(10); i >= 0; i-- { fmt.Println(<-c) }
-    quit <- true
-```
+package main
 
-```go
-        select {
-            case c <- fmt.Sprintf("%s: %d", msg, i):
-            // do nothing
-            case <-quit:
-            return
-        }
+import (
+	"fmt"
+	"math/rand"
+	"time"
+)
+
+func boring(msg string, quit chan bool) <-chan string { // returns receive-only channel of strings
+	c := make(chan string)
+	go func() {
+		for i := 0; ; i++ {
+			select {
+			case c <- fmt.Sprintf("%s: %d", msg, i):
+				time.Sleep(time.Duration(rand.Intn(1e3)) * time.Millisecond)
+			case <-quit:
+				return
+			}
+		}
+	}()
+
+	return c
+}
+
+func main() {
+	quit := make(chan bool)
+	c := boring("Hello World", quit)
+	for i := rand.Intn(10); i > 0; i-- {
+		fmt.Println(<-c)
+	}
+	quit <- true
+	fmt.Println("i am done now")
+}
 ```
 
 ### Receive on quit channel
@@ -465,23 +560,55 @@ We can turn this around and tell Joe to stop when we're tired of listening to hi
 How do we know it's finished? Wait for it to tell us it's done: receive on the quit channel
 
 ```go
-    quit := make(chan string)
-    c := boring("Joe", quit)
-    for i := rand.Intn(10); i >= 0; i-- { fmt.Println(<-c) }
-    quit <- "Bye!"
-    fmt.Printf("Joe says: %q\n", <-quit)
+package main
+
+import (
+	"fmt"
+	"math/rand"
+	"time"
+)
+
+func cleanup() {
+	fmt.Println("Cleaning up...")
+}
+
+func boring(msg string, quit chan string) <-chan string { // returns receive-only channel of strings
+	c := make(chan string)
+	go func() {
+		for i := 0; ; i++ {
+			select {
+			case c <- fmt.Sprintf("%s: %d", msg, i):
+				time.Sleep(time.Duration(rand.Intn(1e3)) * time.Millisecond)
+			case <-quit:
+				cleanup()
+				quit <- "See ya !"
+				return
+			}
+		}
+	}()
+
+	return c
+}
+
+func main() {
+	quit := make(chan string)
+	c := boring("Hello World", quit)
+	for i := rand.Intn(10); i > 0; i-- {
+		fmt.Println(<-c)
+	}
+	quit <- "Bye !?"
+	fmt.Printf("Joe says: %q\n", <-quit)
+}
+/**
+Hello World: 0
+Hello World: 1
+Hello World: 2
+Cleaning up...
+Joe says: "See ya !"
+*/
 ```
 
-```go
-		select {
-            case c <- fmt.Sprintf("%s: %d", msg, i):
-                // do nothing
-            case <-quit:
-                cleanup()
-                quit <- "See you!"
-                return
-            }
-```
+
 
 ### Daisy-chain
 
