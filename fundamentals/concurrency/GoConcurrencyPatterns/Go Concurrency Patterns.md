@@ -309,7 +309,7 @@ func boring(msg string) <-chan string { // returns receive-only channel of strin
 	go func() {
 		for i := 0; ; i++ {
 			c <- fmt.Sprintf("%s %d", msg, i)
-			time.Sleep(time.Duration(rand.Intn(1e3)) * time.Millisecond)
+			time.Sleep(time.Duration(rand.Intn(1e3) * time.Millisecond))
 		}
 	}()
 
