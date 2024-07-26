@@ -1,1 +1,0 @@
-https://www.datadoghq.com/blog/go-logging/
